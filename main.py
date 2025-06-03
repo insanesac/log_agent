@@ -24,7 +24,7 @@ def interactivate_client(client: A2AClient):
         try:
             user_input = input("You: ")
             if user_input.lower() == 'exit':
-                logger.info("🔴 User exited the interactive session.")x
+                logger.info("🔴 User exited the interactive session.")
                 print("Exiting the client.")
                 break
 
