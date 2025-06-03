@@ -14,10 +14,11 @@ from python_a2a import agent, skill, run_server
 from schema_tool import mcp
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s"
-)
-logger = logging.getLogger(__name__)
+    level=logging.DEBUG,
+    format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)                                               
+logger = logging.getLogger(__name__)        
 
 class SchemaAnalyzerAgent(A2AServer, FastMCPAgent):
     def __init__(self):
@@ -31,13 +32,13 @@ class SchemaAnalyzerAgent(A2AServer, FastMCPAgent):
         agent_card = AgentCard(
             name="Schema Analyzer Agent with Tools",
             description="An agent that infers schema of a json string",
-            url=f"http://localhost:{self.port}",
+            url=f"http://localhost:{self.port}/a2a",
             version="1.0.0"
         )
         mcp_servers = {}
         mcp_servers['schema_analyzer'] = mcp
         logger.info(f"mcp server -------- {mcp_servers}")
-        A2AServer.__init__(self, agent_card=agent_card)
+        A2AServer.__init__(self, agent_card=agent_card, prefix="a2a")
         FastMCPAgent.__init__(
             self,
             mcp_servers=mcp_servers
@@ -48,60 +49,7 @@ class SchemaAnalyzerAgent(A2AServer, FastMCPAgent):
     def handle_message(self, message: Message) -> Message:
         logger.info("📥 Received async message")
 
-        if isinstance(message.content, TextContent):
-            text_content = message.content.text
-            logger.debug(f"📄 Text content: {text_content}")
-
-            json_files = re.findall(r'(\S+\.json)', text_content)
-            logger.info(f"📦 Found JSON file references: {json_files}")
-
-            if json_files:
-                json_data = []
-
-                for file in json_files:
-                    try:
-                        logger.info(f"📂 Attempting to open file: {file}")
-                        with open(file, 'r') as f:
-                            content = f.read()
-                            json_data.append(content)
-                            logger.debug(f"📑 Content read from {file}: {content[:10]}...")  # Truncated
-                    except FileNotFoundError:
-                        logger.error(f"❌ File not found: {file}")
-                        return Message(
-                            content=TextContent(text=f"File {file} not found."),
-                            role=MessageRole.AGENT,
-                            parent_message_id=message.message_id,
-                            conversation_id=message.conversation_id,
-                        )
-
-                logger.info("🔧 Sending data to MCP tool: analyze_schema")
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-                json_schemas = loop.run_until_complete(
-                        self.call_mcp_tool(
-                            "schema_analyzer",
-                            "analyze_schema",
-                            json_data=json_data
-                    )
-                )
-                logger.info(f"✅ Received schema analysis response {json_schemas}")
-
-                return Message(
-                    content=TextContent(text=f"JSON Schemas: {json_schemas}"),
-                    role=MessageRole.AGENT,
-                    parent_message_id=message.message_id,
-                    conversation_id=message.conversation_id,
-                )
-            else:
-                logger.warning("⚠️ No JSON file references found in text.")
-                return Message(
-                    content=TextContent(text="No JSON files found in the message."),
-                    role=MessageRole.AGENT,
-                    parent_message_id=message.message_id,
-                    conversation_id=message.conversation_id,
-                )
-        else:
+        if not isinstance(message.content, TextContent):
             logger.warning("⚠️ Non-text content received.")
             return Message(
                 content=TextContent(text="Message content is not text."),
@@ -110,6 +58,59 @@ class SchemaAnalyzerAgent(A2AServer, FastMCPAgent):
                 conversation_id=message.conversation_id,
             )
 
+        text_content = message.content.text
+        logger.debug(f"📄 Text content: {text_content}")
+
+        json_files = re.findall(r'(\S+\.json)', text_content)
+        logger.info(f"📦 Found JSON file references: {json_files}")
+
+        if not json_files:
+            logger.warning("⚠️ No JSON file references found in text.")
+            return Message(
+                content=TextContent(text="No JSON files found in the message."),
+                role=MessageRole.AGENT,
+                parent_message_id=message.message_id,
+                conversation_id=message.conversation_id,
+            )
+
+        json_data = []
+
+        for file in json_files:
+            try:
+                logger.info(f"📂 Attempting to open file: {file}")
+                with open(file, 'r') as f:
+                    content = f.read()
+                    json_data.append(content)
+                    logger.debug(f"📑 Content read from {file}: {content[:10]}...")  # Truncated
+            except FileNotFoundError:
+                logger.error(f"❌ File not found: {file}")
+                return Message(
+                    content=TextContent(text=f"File {file} not found."),
+                    role=MessageRole.AGENT,
+                    parent_message_id=message.message_id,
+                    conversation_id=message.conversation_id,
+                )
+
+        logger.info("🔧 Sending data to MCP tool: analyze_schema")
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        json_schemas = loop.run_until_complete(
+                self.call_mcp_tool(
+                    "schema_analyzer",
+                    "analyze_schema",
+                    json_data=json_data
+            )
+        )
+        logger.info(f"✅ Received schema analysis response {json_schemas}")
+
+        return Message(
+            content=TextContent(text=f"JSON Schemas: {json_schemas}"),
+            role=MessageRole.AGENT,
+            parent_message_id=message.message_id,
+            conversation_id=message.conversation_id,
+        )
+         
     def run_agent(self):
         """
         Run the SchemaAnalyzerAgent.
