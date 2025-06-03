@@ -1,0 +1,10 @@
+dotenv
+pydantic
+rich
+pyautogen
+ollama
+python_a2a
+langchain
+langchain_community
+openai
+
